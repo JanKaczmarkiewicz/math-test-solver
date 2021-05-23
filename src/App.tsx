@@ -2,6 +2,7 @@ import produce from "immer";
 import React, { ReactNode, useState } from "react";
 import styled from "styled-components";
 import Matrix, { MatrixValue } from "./components/Matrix";
+import { evaluate } from "mathjs";
 
 const initialMatrix = [
   ["X   /   Y", -4, 0, 2, 3],
@@ -127,6 +128,31 @@ const getCorrelationCoefficient = (matrix: MatrixValue) => {
   );
 };
 
+const getIntependenceMessage = (matrix: MatrixValue) => {
+  const probabilityMatrix = getProbabilityMatrix(matrix);
+  const [[, ...xValues], [, ...xpValues]] = getDistibution(matrix, "X");
+  const [[, ...yValues], [, ...ypValues]] = getDistibution(matrix, "Y");
+
+  for (const [rowIndex, row] of probabilityMatrix.entries()) {
+    for (const [cellIndex, cell] of row.entries()) {
+      console.log(
+        { x: xValues[rowIndex], y: yValues[cellIndex] },
+        xValues[rowIndex] * yValues[cellIndex]
+      );
+      if (cell !== xpValues[rowIndex] * ypValues[cellIndex]) {
+        return `
+          Zmienne X i Y są zalezne. 
+          P(X=${xValues[rowIndex]}, Y=${
+          yValues[cellIndex]
+        }) = ${cell} jest rózne od P(X=${xValues[rowIndex]}) * P(Y=${
+          yValues[cellIndex]
+        }) = ${xpValues[rowIndex] * ypValues[cellIndex]}`;
+      }
+    }
+  }
+  return `Zmienne X i Y są niezalezne.`;
+};
+
 const Wrapper = styled.div`
   padding: 1rem 4rem;
 `;
@@ -141,6 +167,46 @@ const Container = ({ children }: { children: ReactNode }) => (
     <Card>{children}</Card>
   </Wrapper>
 );
+
+const safeEval = (text: string) => {
+  try {
+    return evaluate(text);
+  } catch (error) {
+    return "Coś jest nie tak";
+  }
+};
+
+const EQSolver = ({ value }: { value: MatrixValue }) => {
+  const [eq, setEq] = useState("");
+
+  const variable = eq.includes("X") ? "X" : "Y";
+
+  const EZ = safeEval(
+    eq.replace(variable, "*" + getExpectedValue(value, variable).toString())
+  );
+
+  const D2Z = safeEval(
+    `${eq.split(variable)[0]}^2*${getVariation(value, variable)}`
+  );
+  return (
+    <>
+      <h3>Zmienna Z</h3>
+      <p>
+        Z ={" "}
+        <input
+          type="text"
+          value={eq}
+          placeholder={"-2X+5"}
+          onChange={(e) => {
+            setEq(e.target.value);
+          }}
+        />
+      </p>
+      <p>EZ = {EZ}</p>
+      <p>D^2Z = {D2Z}</p>
+    </>
+  );
+};
 
 const VariableMeta = (props: { matrix: MatrixValue; variable: Var }) => {
   const { matrix, variable } = props;
@@ -176,26 +242,43 @@ const VariableMeta = (props: { matrix: MatrixValue; variable: Var }) => {
 const App = () => {
   const [matrix, setMatrix] = useState<MatrixValue>(initialMatrix);
 
+  const isEmptyCell = !!matrix.find((row) => row.indexOf("") > -1);
+  console.log(matrix);
+
   return (
     <div>
       <Container>
         <h1>Sprawdzian solver 🧙‍♂️</h1>
         <Matrix edit value={matrix} onChange={setMatrix} />
-      </Container>
 
-      <Container>
-        <VariableMeta matrix={matrix} variable={"X"} />
+        {isEmptyCell && <p>Wypełnij wszystkie pola</p>}
       </Container>
+      {!isEmptyCell && (
+        <>
+          <Container>
+            <VariableMeta matrix={matrix} variable={"X"} />
+          </Container>
 
-      <Container>
-        <VariableMeta matrix={matrix} variable={"Y"} />
-      </Container>
+          <Container>
+            <VariableMeta matrix={matrix} variable={"Y"} />
+          </Container>
 
-      <Container>
-        <h3>Współczynik korelacji</h3>
-        <p>E(XY) = {getExpectedValueYTimesX(matrix)}</p>
-        <p>p(X, Y) = {getCorrelationCoefficient(matrix)}</p>
-      </Container>
+          <Container>
+            <h3>Współczynik korelacji</h3>
+            <p>E(XY) = {getExpectedValueYTimesX(matrix)}</p>
+            <p>p(X, Y) = {getCorrelationCoefficient(matrix)}</p>
+          </Container>
+
+          <Container>
+            <EQSolver value={matrix} />
+          </Container>
+
+          <Container>
+            <h3>Niezalezność X i Y</h3>
+            <p>{getIntependenceMessage(matrix)}</p>
+          </Container>
+        </>
+      )}
     </div>
   );
 };
